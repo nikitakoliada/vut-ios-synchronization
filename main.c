@@ -84,7 +84,7 @@ int main(int argc, char* argv[]) {
      */
     if (main_process.pid == getpid())
     {
-        for (unsigned i = 1; i <= NZ; i++) {
+        for (int i = 1; i <= NZ; i++) {
             if (fork() == 0) {
                 curr_process = create_process(getpid(), ++ipc->customer_n, 'Z');
                 print_msg(file, sem_file, "%u: Z %d: started\n", ++ipc->line_n, curr_process.id);
@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
      */
     if (main_process.pid == getpid())
     {
-        for (unsigned i = 1; i <= NU; i++) {
+        for (int i = 1; i <= NU; i++) {
             if (fork() == 0) {
                 curr_process = create_process(getpid(), ++ipc->clerks_n,'U');
                 print_msg(file,  sem_file, "%u: U %d: started\n", ++ipc->line_n, curr_process.id);
