@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) {
 
     file = fopen(FILENAME, "w");
     // INITIALIZE SEMAPHORES
-    sem_t *sem_customer = sem_open(SEMAPHORE_CUSTOMER, O_CREAT, 0660, 0);
+    sem_t *sem_customer = sem_open(SEMAPHORE_CUSTOMER, O_CREAT, 0660, 1);
     if(sem_customer == SEM_FAILED){
         perror("sem_open/customer");
         exit(EXIT_FAILURE);
@@ -78,6 +78,20 @@ int main(int argc, char* argv[]) {
     if(sem_file == SEM_FAILED){
         perror("sem_open/wfile");
         exit(EXIT_FAILURE);
+    }
+
+    /*
+ *   Creates NU processes out of main process
+ */
+    if (main_process.pid == getpid())
+    {
+        for (int i = 1; i <= NU; i++) {
+            if (fork() == 0) {
+                curr_process = create_process(getpid(), ++ipc->clerks_n,'U');
+                print_msg(file,  sem_file, "%u: U %d: started\n", ++ipc->line_n, curr_process.id);
+                break;
+            }
+        }
     }
     /*
      *   Creates NZ processes out of main process
@@ -96,19 +110,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    /*
-     *   Creates NU processes out of main process
-     */
-    if (main_process.pid == getpid())
-    {
-        for (int i = 1; i <= NU; i++) {
-            if (fork() == 0) {
-                curr_process = create_process(getpid(), ++ipc->clerks_n,'U');
-                print_msg(file,  sem_file, "%u: U %d: started\n", ++ipc->line_n, curr_process.id);
-                break;
-            }
-        }
-    }
+
 
 
     srand(getpid()); // initialize random number generator
@@ -117,37 +119,37 @@ int main(int argc, char* argv[]) {
         if(curr_process.type == 'Z') {
             if(ipc->is_post_opened == true) {
                 int service = rand() % 3 + 1;
-                print_msg(file, sem_file, "%u: Z %u: entering office for a service %d\n", ++ipc->line_n, curr_process.id, service);
+                print_msg(file, sem_file, "%u: Z %u: entering office for a service %d\n", ++ipc->line_n,
+                          curr_process.id, service);
 //                while(ipc->queue[service - 1] != 0){
 //                    if(ipc->is_post_opened == false){
 //                        printf("Z %d: going home\n", curr_process.id);
 //                        exit(EXIT_SUCCESS);
 //                    }
 //                }
+
+                sem_wait(sem_customer);
                 ipc->queue[service - 1]++;
+                sem_post(sem_customer);
 
+                sem_wait(sem_clerk);
+                print_msg(file, sem_file, "%u: Z %d: called by office worker\n", ++ipc->line_n, curr_process.id);
+                sem_post(sem_customer);
+                usleep((rand() % 10) * 1000);
+                print_msg(file, sem_file, "%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
+                exit(EXIT_SUCCESS);
 
-                    //sem_wait(sem_clerk);
-
-                    sem_wait(sem_clerk);
-                if(ipc->is_post_opened == true) {
-                    print_msg(file, sem_file, "%u: Z %d: called by office worker\n", ++ipc->line_n, curr_process.id);
-                    sem_post(sem_customer);
-                    usleep((rand() % (10 + 1)) * 1000);
-                    print_msg(file, sem_file, "%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
-                    exit(EXIT_SUCCESS);
-                }
             }
             else {
                 print_msg(file, sem_file,"%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
                 exit(EXIT_SUCCESS);
             }
         }else if (curr_process.type == 'U'){
-            while(ipc->is_post_opened == true) {
+            while(ipc->is_post_opened == true || !no_queue(ipc)) {
                 int service = rand() % 3 + 1;
-
+                //choose random service to serve if no found - take a break
                 while (ipc->queue[service - 1] == 0 && ipc->is_post_opened == true) {
-                    if (ipc->queue[0] == 0 && ipc->queue[1] == 0 && ipc->queue[2] == 0) {
+                    if (no_queue(ipc)) {
                         sem_wait(sem_clerk);
 
                         print_msg(file, sem_file, "%u: U %d: taking break\n", ++ipc->line_n, curr_process.id);
@@ -159,16 +161,21 @@ int main(int argc, char* argv[]) {
                     }
                     service = rand() % 3 + 1;
                 }
-
-                if (ipc->is_post_opened == true) {
-                    ipc->queue[service - 1]--;
-                    sem_wait(sem_customer);
-                    print_msg(file, sem_file, "%u: U %d: serving a service of type %d\n", ++ipc->line_n, curr_process.id, service);
-                    usleep((rand() % (10 + 1)) * 1000);
-                    print_msg(file, sem_file, "%u: U %d: service finished\n", ++ipc->line_n, curr_process.id);
-                    sem_post(sem_clerk);
+                if(!ipc->is_post_opened){
+                    break;
                 }
 
+
+                sem_wait(sem_customer);
+                ipc->queue[service - 1]--;
+                sem_post(sem_customer);
+                sem_wait(sem_customer);
+
+                print_msg(file, sem_file, "%u: U %d: serving a service of type %d\n", ++ipc->line_n, curr_process.id,
+                          service);
+                usleep((rand() % 10) * 1000);
+                print_msg(file, sem_file, "%u: U %d: service finished\n", ++ipc->line_n, curr_process.id);
+                sem_post(sem_clerk);
             }
             print_msg(file,sem_file, "%u: U %d: going home\n", ++ipc->line_n, curr_process.id);
             exit(EXIT_SUCCESS);
