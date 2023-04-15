@@ -26,8 +26,8 @@ typedef struct
     //0 is no Z in queue, 5 is Z's id
     //[0] - 1, [1] - 2, [2] - 3  services
     int queue[3];
-    unsigned customer_n;
-    unsigned clerks_n;
+    int customer_n;
+    int clerks_n;
     bool is_post_opened;
     unsigned shmid;
 } ipc_t;
@@ -35,15 +35,13 @@ typedef struct
 typedef struct
 {
     //process id
-    unsigned pid;
+    pid_t pid;
     //id of clerc or customer
     unsigned id;
     char type;
 } process_t;
 
-void write_file(char *msg){
 
-}
 
 //creating shared memory
 ipc_t* ipc_init(){
@@ -51,6 +49,7 @@ ipc_t* ipc_init(){
     int ipc_key = shmget(key, sizeof(ipc_t), 0666 | IPC_CREAT);
     ipc_t* ipc = shmat(ipc_key, NULL, 0);
     ipc->shmid = ipc_key;
+    ipc->line_n = 0;
     ipc->customer_n = 0;
     ipc->clerks_n = 0;
     ipc->queue[0] = 0;
@@ -72,23 +71,25 @@ void ipc_destroy(ipc_t *ipc){
 process_t create_process(unsigned pid, unsigned id, char type){
     return ((process_t){pid, id, type});
 }
-void print_msg(FILE *file, const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    vfprintf(file, format, args);
-    va_end(args);
-}
-
-
-//void print_msg(FILE *file, sem_t *sem_file, const char *format, ...) {
+//void print_msg(FILE *file, const char *format, ...) {
 //    va_list args;
 //    va_start(args, format);
-//    unsigned *num = va_arg(args, unsigned *);
-//    sem_wait(sem_file);
 //
 //    vfprintf(file, format, args);
-//    num++;
 //    sem_post(sem_file);
 //
 //    va_end(args);
 //}
+
+
+void print_msg(FILE *file, sem_t *sem_file, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    sem_wait(sem_file);
+
+    vfprintf(file, format, args);
+    fflush(file);
+
+    sem_post(sem_file);
+    va_end(args);
+}

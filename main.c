@@ -53,6 +53,7 @@ int main(int argc, char* argv[]) {
     ipc_t *ipc = ipc_init();
 
 
+
     // unlink semaphores if existed before
     sem_unlink(SEMAPHORE_CUSTOMER);
     sem_unlink(SEMAPHORE_CLERC);
@@ -184,6 +185,8 @@ int main(int argc, char* argv[]) {
     // Destroy the semaphores
     sem_close(sem_clerk);
     sem_close(sem_customer);
+    sem_close(sem_file);
+
     //Destroy shared memory
     fclose(file);
     ipc_destroy(ipc);
