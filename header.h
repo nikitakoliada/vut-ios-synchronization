@@ -10,10 +10,16 @@
 #include <stdbool.h>
 #include <stdarg.h>
 
+// Author - Nikita Koliada
+// LOGIN - xkolia00
+
+#define SEM_COUNT 8
 
 #define SEMAPHORE_CUSTOMER "semaphore_customer"
 #define SEMAPHORE_CLERC "semaphore_clerc"
 #define SEMAPHORE_WFILE "semaphore_wfile"
+#define SEMAPHORE_QUEUE "semaphore_queue"
+
 
 #define FK "main.c"
 #define FILENAME "proj2.out"
@@ -71,25 +77,56 @@ void ipc_destroy(ipc_t *ipc){
 process_t create_process(unsigned pid, unsigned id, char type){
     return ((process_t){pid, id, type});
 }
-//void print_msg(FILE *file, const char *format, ...) {
-//    va_list args;
-//    va_start(args, format);
-//
-//    vfprintf(file, format, args);
-//    sem_post(sem_file);
-//
-//    va_end(args);
-//}
 
+bool no_queue(ipc_t *ipc){
+    if(ipc->queue[0] == 0 && ipc->queue[1] == 0 && ipc->queue[2] == 0){
+        return true;
+    }
+    else
+        return false;
+}
 
 void print_msg(FILE *file, sem_t *sem_file, const char *format, ...) {
+    sem_wait(sem_file);
+
     va_list args;
     va_start(args, format);
-    sem_wait(sem_file);
 
     vfprintf(file, format, args);
     fflush(file);
 
-    sem_post(sem_file);
     va_end(args);
+    sem_post(sem_file);
+
+}
+
+//void print_msg( sem_t *sem_file, const char *format, ...) {
+//    FILE *file = fopen(FILENAME, "a");
+//    if (file == NULL) {
+//        perror("fopen");
+//        exit(EXIT_FAILURE);
+//    }
+//    va_list args;
+//    va_start(args, format);
+//    sem_wait(sem_file);
+//
+//    vfprintf(file, format, args);
+//    fflush(file);
+//
+//    sem_post(sem_file);
+//    va_end(args);
+//
+//    fclose(file);
+//
+//}
+void destroy_semaphores(sem_t **sem_array) {
+    int i;
+    for (i = 0; i < SEM_COUNT; i++) {
+        if (sem_array[i] != NULL) {
+            if (sem_close(sem_array[i]) != 0) {
+                perror("sem_close");
+            }
+            sem_array[i] = NULL;
+        }
+    }
 }

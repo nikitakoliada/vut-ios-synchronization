@@ -1,6 +1,7 @@
 #include "header.h"
 
-
+// Author - Nikita Koliada
+// LOGIN - xkolia00
 
 int main(int argc, char* argv[]) {
     srand(time(NULL)); // initialize random number generator
@@ -22,9 +23,7 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
         }
-//        if(atoi(argv[i]) < 0){
-//            fprintf(stderr, "The arguments must be unsigned");
-//        }
+
         if(i == 3 && (atoi(argv[i]) > 10000 || atoi(argv[i]) < 0)) {
             fprintf(stderr, "The 3 argument must be >=0 and <=10000\n");
             return 1;
@@ -63,46 +62,56 @@ int main(int argc, char* argv[]) {
 
     // unlink semaphores if existed before
     sem_unlink(SEMAPHORE_CUSTOMER);
-    sem_unlink(SEMAPHORE_CLERC);
     sem_unlink(SEMAPHORE_WFILE);
     sem_unlink(SEMAPHORE_QUEUE);
 
 
 
     // INITIALIZE SEMAPHORES
+
+    //initialize 3 semaphores for customer queue (3 services 3 queue)
     sem_t *sem_customer[3];
     for (int i = 0; i < 3; i++) {
         char name[50];
         sprintf(name, "%s%d", SEMAPHORE_CUSTOMER, i);
+        //unlink the semaphore if existed before
+        sem_unlink(name);
         sem_customer[i] = sem_open(name, O_CREAT, 0660, 0);
         if(sem_customer[i] == SEM_FAILED){
             perror("sem_open/customer");
             exit(EXIT_FAILURE);
         }
     }
-//    sem_t *sem_customer = sem_open(SEMAPHORE_CUSTOMER, O_CREAT, 0660, 0);
-//    if(sem_customer == SEM_FAILED){
-//        perror("sem_open/customer");
-//        exit(EXIT_FAILURE);
-//    }
-    sem_t *sem_clerk = sem_open(SEMAPHORE_CLERC, O_CREAT, 0660, NU);
-    if(sem_clerk == SEM_FAILED){
-        perror("sem_open/clerc");
-        exit(EXIT_FAILURE);
+
+    //initialize 3 semaphores for clerk queue (3 services 3 queue)
+    sem_t *sem_clerk[3];
+    for (int i = 0; i < 3; i++) {
+        char name[50];
+        sprintf(name, "%s%d", SEMAPHORE_CLERC, i);
+        //unlink the semaphore if existed before
+        sem_unlink(name);
+        sem_clerk[i] = sem_open(name, O_CREAT, 0660, 0);
+        if(sem_clerk[i] == SEM_FAILED){
+            perror("sem_open/clerk");
+            exit(EXIT_FAILURE);
+        }
     }
 
+    //initialize semaphore(mutex) for writing in file
     sem_t *sem_file = sem_open(SEMAPHORE_WFILE, O_CREAT, 0660, 1);
     if(sem_file == SEM_FAILED){
         perror("sem_open/wfile");
         exit(EXIT_FAILURE);
     }
+    //initialize semaphore(mutex) for data about queue
     sem_t *sem_queue = sem_open(SEMAPHORE_QUEUE, O_CREAT, 0660, 1);
     if(sem_file == SEM_FAILED){
-        perror("sem_open/wfile");
+        perror("sem_open/queue");
         exit(EXIT_FAILURE);
     }
 
-    sem_t *sem_array[SEM_COUNT] = { sem_clerk, sem_file, sem_queue, sem_customer[0], sem_customer[1], sem_customer[2]};
+    // array of pointers to all semaphores for easier cleaning up
+    sem_t *sem_array[SEM_COUNT] = { sem_file, sem_queue, sem_customer[0], sem_customer[1], sem_customer[2], sem_clerk[0], sem_clerk[1], sem_clerk[2]};
 
     /*
  *   Creates NU processes out of main process
@@ -150,7 +159,7 @@ int main(int argc, char* argv[]) {
                 sem_post(sem_queue);
 
                 //waiting for free clerk to start
-                sem_wait(sem_clerk);
+                sem_wait(sem_clerk[service - 1]);
                 print_msg(file,sem_file, "%u: Z %d: called by office worker\n", ++ipc->line_n, curr_process.id);
 
                 //semaphore for notifying clerk to start serving the customer with specific service
@@ -158,7 +167,9 @@ int main(int argc, char* argv[]) {
 
                 usleep((rand() % 10) * 1000);
                 print_msg(file,sem_file, "%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
+                //destroying semaphores
                 destroy_semaphores(sem_array);
+                //closing
                 fclose(file);
                 exit(EXIT_SUCCESS);
 
@@ -174,30 +185,30 @@ int main(int argc, char* argv[]) {
                 int service = rand() % 3 + 1;
                 //choose random service to serve if no found - take a break
                 while (ipc->queue[service - 1] == 0) {
+                    service = rand() % 3 + 1;
                     if(!ipc->is_post_opened && no_queue(ipc)){
+                        // is closed and no customers - going home
                         print_msg(file,sem_file, "%u: U %d: going home\n", ++ipc->line_n, curr_process.id);
                         destroy_semaphores(sem_array);
                         fclose(file);
                         exit(EXIT_SUCCESS);
                     }
                     if (no_queue(ipc)) {
-                        //decreasing value of the semaphore while taking break
-                        sem_wait(sem_clerk);
+                        //taking break
                         print_msg(file,sem_file, "%u: U %d: taking break\n", ++ipc->line_n, curr_process.id);
                         usleep((rand() % TU) * 1000);
                         print_msg(file,sem_file, "%u: U %d: break finished\n", ++ipc->line_n, curr_process.id);
-                        sem_post(sem_clerk);
-
-                        continue;
                     }
-                    service = rand() % 3 + 1;
                 }
 
+                //ready for the next customer
+                sem_post(sem_clerk[service - 1]);
 
                 //semaphore for correct accessing queue data
                 sem_wait(sem_queue);
                 ipc->queue[service - 1]--;
                 sem_post(sem_queue);
+
 
                 //if the customer is ready - serve
                 sem_wait(sem_customer[service - 1]);
@@ -206,8 +217,7 @@ int main(int argc, char* argv[]) {
                           service);
                 usleep((rand() % 10) * 1000);
                 print_msg(file,sem_file, "%u: U %d: service finished\n", ++ipc->line_n, curr_process.id);
-                //finished serving - ready for the next custmoer
-                sem_post(sem_clerk);
+
             }
             print_msg(file, sem_file, "%u: U %d: going home\n", ++ipc->line_n, curr_process.id);
             destroy_semaphores(sem_array);
@@ -233,11 +243,12 @@ int main(int argc, char* argv[]) {
 
 
     //unlink the semaphores
-    sem_unlink(SEMAPHORE_CUSTOMER);
-    sem_unlink(SEMAPHORE_CLERC);
-    sem_unlink(SEMAPHORE_WFILE);
-    sem_unlink(SEMAPHORE_QUEUE);
-//    //close file
+//    sem_unlink(SEMAPHORE_CUSTOMER);
+//    sem_unlink(SEMAPHORE_CLERC);
+//    sem_unlink(SEMAPHORE_WFILE);
+//    sem_unlink(SEMAPHORE_QUEUE);
+
+    //close file
     fclose(file);
 
     //Destroy shared memory
