@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
         for (int j = 0; argv[i][j]; j++) {
             int n = argv[i][j];
             if (!(n >= '0' && n <= '9')) {
-                fprintf(stderr, "The arguments must be numbers\n");
+                fprintf(stderr, "The arguments must be positive numbers\n");
                 return 1;
             }
         }
@@ -61,9 +61,19 @@ int main(int argc, char* argv[]) {
     }
 
     // unlink semaphores if existed before
-    sem_unlink(SEMAPHORE_CUSTOMER);
+    for (int i = 0; i < 3; i++) {
+        char name[50];
+        sprintf(name, "%s%d", SEMAPHORE_CLERC, i);
+        sem_unlink(name);
+    }
+    for (int i = 0; i < 3; i++) {
+        char name[50];
+        sprintf(name, "%s%d", SEMAPHORE_CUSTOMER, i);
+        sem_unlink(name);
+    }
     sem_unlink(SEMAPHORE_WFILE);
     sem_unlink(SEMAPHORE_QUEUE);
+
 
 
 
@@ -113,9 +123,7 @@ int main(int argc, char* argv[]) {
     // array of pointers to all semaphores for easier cleaning up
     sem_t *sem_array[SEM_COUNT] = { sem_file, sem_queue, sem_customer[0], sem_customer[1], sem_customer[2], sem_clerk[0], sem_clerk[1], sem_clerk[2]};
 
-    /*
- *   Creates NU processes out of main process
- */
+    //Creates NU processes out of main process
     if (main_process.pid == getpid())
     {
         for (int i = 1; i <= NU; i++) {
@@ -126,9 +134,7 @@ int main(int argc, char* argv[]) {
             }
         }
     }
-    /*
-     *   Creates NZ processes out of main process
-     */
+    //Creates NZ processes out of main process
     if (main_process.pid == getpid())
     {
         for (int i = 1; i <= NZ; i++) {
@@ -136,15 +142,17 @@ int main(int argc, char* argv[]) {
                 curr_process = create_process(getpid(), ++ipc->customer_n, 'Z');
                 print_msg( file,sem_file, "%u: Z %d: started\n", ++ipc->line_n, curr_process.id);
                 srand(getpid()); // initialize random number generator
-                int sleep_time = (rand() % TZ) * 1000; // random sleep in ms
-                usleep(sleep_time);
+                if(TZ != 0){
+                    int sleep_time = (rand() % TZ) * 1000; // random sleep in ms
+                    usleep(sleep_time);
+                }
                 break;
             }
         }
     }
 
-
-    srand(getpid()); // initialize random number generator
+    // initialize random number generator
+    srand(getpid()); 
 
     if(main_process.pid != getpid()){
         if(curr_process.type == 'Z') {
@@ -167,17 +175,21 @@ int main(int argc, char* argv[]) {
 
                 usleep((rand() % 10) * 1000);
                 print_msg(file,sem_file, "%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
-                //destroying semaphores
+                // Destroy the semaphores
                 destroy_semaphores(sem_array);
-                //closing
+                //close file
                 fclose(file);
+                //exit with sucess
                 exit(EXIT_SUCCESS);
 
             }
             else {
                 print_msg(file,sem_file,"%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
+                // Destroy the semaphores
                 destroy_semaphores(sem_array);
+                //close file
                 fclose(file);
+                //exit with sucess
                 exit(EXIT_SUCCESS);
             }
         }else if (curr_process.type == 'U'){
@@ -189,14 +201,19 @@ int main(int argc, char* argv[]) {
                     if(!ipc->is_post_opened && no_queue(ipc)){
                         // is closed and no customers - going home
                         print_msg(file,sem_file, "%u: U %d: going home\n", ++ipc->line_n, curr_process.id);
+                        // Destroy the semaphores
                         destroy_semaphores(sem_array);
+                        //close file
                         fclose(file);
+                        //exit with sucess
                         exit(EXIT_SUCCESS);
                     }
                     if (no_queue(ipc)) {
                         //taking break
                         print_msg(file,sem_file, "%u: U %d: taking break\n", ++ipc->line_n, curr_process.id);
-                        usleep((rand() % TU) * 1000);
+                        if(TU != 0){
+                            usleep((rand() % TU) * 1000);
+                        }
                         print_msg(file,sem_file, "%u: U %d: break finished\n", ++ipc->line_n, curr_process.id);
                     }
                 }
@@ -219,9 +236,13 @@ int main(int argc, char* argv[]) {
                 print_msg(file,sem_file, "%u: U %d: service finished\n", ++ipc->line_n, curr_process.id);
 
             }
+            //going home
             print_msg(file, sem_file, "%u: U %d: going home\n", ++ipc->line_n, curr_process.id);
+             // Destroy the semaphores
             destroy_semaphores(sem_array);
+            //close file
             fclose(file);
+            //exit with sucess
             exit(EXIT_SUCCESS);
         }
 
@@ -229,8 +250,10 @@ int main(int argc, char* argv[]) {
     else{
         // main process
         // defines the work time
-        int sleep_time = ((rand() % (F/2 + 1)) + F/2) * 1000; // random time in ms
+        if(F != 0){
+        int sleep_time = ((rand() % F/2) + F/2) * 1000; // random time in ms
         usleep(sleep_time);
+        }
         print_msg(file, sem_file, "%u: closing\n", ++ipc->line_n);
         ipc->is_post_opened = false;
 
@@ -241,17 +264,11 @@ int main(int argc, char* argv[]) {
     // Destroy the semaphores
     destroy_semaphores(sem_array);
 
-
-    //unlink the semaphores
-//    sem_unlink(SEMAPHORE_CUSTOMER);
-//    sem_unlink(SEMAPHORE_CLERC);
-//    sem_unlink(SEMAPHORE_WFILE);
-//    sem_unlink(SEMAPHORE_QUEUE);
-
     //close file
     fclose(file);
 
     //Destroy shared memory
     ipc_destroy(ipc);
+
     return 0;
 }
