@@ -23,6 +23,10 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
         }
+        if((i == 1 && atoi(argv[i]) < 0) || (i == 2 && atoi(argv[i]) <= 0)) {
+            fprintf(stderr, "The 1 argument must be >= 0 and 2 argument must be > 0\n");
+            return 1;
+        }
 
         if(i == 3 && (atoi(argv[i]) > 10000 || atoi(argv[i]) < 0)) {
             fprintf(stderr, "The 3 argument must be >=0 and <=10000\n");
@@ -61,21 +65,7 @@ int main(int argc, char* argv[]) {
     }
 
     // unlink semaphores if existed before
-    for (int i = 0; i < 3; i++) {
-        char name[50];
-        sprintf(name, "%s%d", SEMAPHORE_CLERC, i);
-        sem_unlink(name);
-    }
-    for (int i = 0; i < 3; i++) {
-        char name[50];
-        sprintf(name, "%s%d", SEMAPHORE_CUSTOMER, i);
-        sem_unlink(name);
-    }
-    sem_unlink(SEMAPHORE_WFILE);
-    sem_unlink(SEMAPHORE_QUEUE);
-
-
-
+    unlink_semaphores();
 
     // INITIALIZE SEMAPHORES
 
@@ -129,7 +119,6 @@ int main(int argc, char* argv[]) {
         for (int i = 1; i <= NU; i++) {
             if (fork() == 0) {
                 curr_process = create_process(getpid(), ++ipc->clerks_n,'U');
-                print_msg(file,sem_file, "%u: U %d: started\n", ++ipc->line_n, curr_process.id);
                 break;
             }
         }
@@ -140,12 +129,6 @@ int main(int argc, char* argv[]) {
         for (int i = 1; i <= NZ; i++) {
             if (fork() == 0) {
                 curr_process = create_process(getpid(), ++ipc->customer_n, 'Z');
-                print_msg( file,sem_file, "%u: Z %d: started\n", ++ipc->line_n, curr_process.id);
-                srand(getpid()); // initialize random number generator
-                if(TZ != 0){
-                    int sleep_time = (rand() % TZ) * 1000; // random sleep in ms
-                    usleep(sleep_time);
-                }
                 break;
             }
         }
@@ -154,8 +137,25 @@ int main(int argc, char* argv[]) {
     // initialize random number generator
     srand(getpid()); 
 
-    if(main_process.pid != getpid()){
+    if(main_process.pid == getpid()) {
+            // main process
+            // defines the work time
+            if(F != 0){
+                int sleep_time = ((rand() %(F/2 + 1)) + F/2) * 1000; // random time in ms
+                usleep(sleep_time);
+            }
+            print_msg(file, sem_file, "%u: closing\n", ++ipc->line_n);
+            ipc->is_post_opened = false;
+
+        }
+    else{
         if(curr_process.type == 'Z') {
+            print_msg( file,sem_file, "%u: Z %d: started\n", ++ipc->line_n, curr_process.id);
+            srand(getpid()); // initialize random number generator
+            if(TZ != 0){
+                int sleep_time = (rand() % TZ) * 1000; // random sleep in ms
+                usleep(sleep_time);
+            }
             if(ipc->is_post_opened == true) {
                 int service = rand() % 3 + 1;
                 print_msg( file,sem_file, "%u: Z %u: entering office for a service %d\n", ++ipc->line_n,
@@ -193,6 +193,7 @@ int main(int argc, char* argv[]) {
                 exit(EXIT_SUCCESS);
             }
         }else if (curr_process.type == 'U'){
+            print_msg(file,sem_file, "%u: U %d: started\n", ++ipc->line_n, curr_process.id);
             while(ipc->is_post_opened == true || !no_queue(ipc)) {
                 int service = rand() % 3 + 1;
                 //choose random service to serve if no found - take a break
@@ -247,24 +248,17 @@ int main(int argc, char* argv[]) {
         }
 
     }
-    else{
-        // main process
-        // defines the work time
-        if(F != 0){
-        int sleep_time = ((rand() % F/2) + F/2) * 1000; // random time in ms
-        usleep(sleep_time);
-        }
-        print_msg(file, sem_file, "%u: closing\n", ++ipc->line_n);
-        ipc->is_post_opened = false;
 
-    }
     while(wait(NULL) > 0) ;
 
 
     // Destroy the semaphores
     destroy_semaphores(sem_array);
 
-    //close file
+    // Unlink the semaphores
+    unlink_semaphores();
+
+    // Close file
     fclose(file);
 
     //Destroy shared memory

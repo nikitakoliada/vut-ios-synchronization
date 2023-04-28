@@ -21,7 +21,7 @@
 #define SEMAPHORE_QUEUE "semaphore_queue"
 
 
-#define FK "main.c"
+#define FK "proj2.c"
 #define FILENAME "proj2.out"
 //struct for shared memory
 typedef struct
@@ -78,6 +78,7 @@ process_t create_process(unsigned pid, unsigned id, char type){
     return ((process_t){pid, id, type});
 }
 
+//check if no customers in queue
 bool no_queue(ipc_t *ipc){
     if(ipc->queue[0] == 0 && ipc->queue[1] == 0 && ipc->queue[2] == 0){
         return true;
@@ -86,6 +87,7 @@ bool no_queue(ipc_t *ipc){
         return false;
 }
 
+//print the message to the file
 void print_msg(FILE *file, sem_t *sem_file, const char *format, ...) {
     sem_wait(sem_file);
 
@@ -100,25 +102,7 @@ void print_msg(FILE *file, sem_t *sem_file, const char *format, ...) {
 
 }
 
-//void print_msg( sem_t *sem_file, const char *format, ...) {
-//    FILE *file = fopen(FILENAME, "a");
-//    if (file == NULL) {
-//        perror("fopen");
-//        exit(EXIT_FAILURE);
-//    }
-//    va_list args;
-//    va_start(args, format);
-//    sem_wait(sem_file);
-//
-//    vfprintf(file, format, args);
-//    fflush(file);
-//
-//    sem_post(sem_file);
-//    va_end(args);
-//
-//    fclose(file);
-//
-//}
+//destroy all semaphores
 void destroy_semaphores(sem_t **sem_array) {
     int i;
     for (i = 0; i < SEM_COUNT; i++) {
@@ -130,3 +114,20 @@ void destroy_semaphores(sem_t **sem_array) {
         }
     }
 }
+
+//unlink all the semaphores
+void unlink_semaphores(){
+    for (int i = 0; i < 3; i++) {
+        char name[50];
+        sprintf(name, "%s%d", SEMAPHORE_CLERC, i);
+        sem_unlink(name);
+    }
+    for (int i = 0; i < 3; i++) {
+        char name[50];
+        sprintf(name, "%s%d", SEMAPHORE_CUSTOMER, i);
+        sem_unlink(name);
+    }
+    sem_unlink(SEMAPHORE_WFILE);
+    sem_unlink(SEMAPHORE_QUEUE);
+}
+
