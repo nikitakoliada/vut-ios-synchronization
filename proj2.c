@@ -119,7 +119,7 @@ int main(int argc, char* argv[]) {
     }
 
     // array of pointers to all semaphores for easier cleaning up
-    sem_t *sem_array[SEM_COUNT] = { sem_file, mutex_queue, sem_queue[0], sem_queue[1], sem_queue[2], mutex_post);
+    sem_t *sem_array[SEM_COUNT] = { sem_file, mutex_queue, sem_queue[0], sem_queue[1], sem_queue[2], mutex_post};
 
     //Creates NU processes out of main process
     if (main_process.pid == getpid())
@@ -155,7 +155,7 @@ int main(int argc, char* argv[]) {
         //waiting for the semaphore to be free then write in a file
         sem_wait(sem_file);
         sem_wait(mutex_post);
-        ipc->is_post_opened = false;
+        ipc->status_post = false;
         sem_post(mutex_post);
         print_msg(file, "%u: closing\n", ++ipc->line_n);
         sem_post(sem_file);

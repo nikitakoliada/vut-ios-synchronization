@@ -16,7 +16,7 @@
 #define SEM_COUNT 6
 
 #define SEMAPHORE_QUEUE "semaphore_queue"
-#define SEMAPHORE_POST "semaphore_post"
+#define MUTEX_POST "semaphore_post"
 #define SEMAPHORE_WFILE "semaphore_wfile"
 #define MUTEX_QUEUE "mutex_queue"
 
@@ -81,10 +81,10 @@ process_t create_process(unsigned pid, unsigned id, char type){
 //check if post is closed with the usage of the semaphore
 bool is_post_closed(sem_t *sem, ipc_t *ipc){
     sem_wait(sem);
-    if(ipc->status_post){
+    if(ipc->status_post) {
         sem_post(sem);
         return true;
-    else{
+    }else{
         sem_post(sem);
         return false;
     }
@@ -94,7 +94,7 @@ bool is_post_closed(sem_t *sem, ipc_t *ipc){
 bool is_empty_queue(sem_t *sem, ipc_t *ipc, int service){
     //semaphore - no clerks could get the same service
     sem_wait(sem);
-    if(ipc_t->>queue[service - 1] == 0){
+    if(ipc->queue[service - 1] == 0){
         sem_post(sem);
         return true;
     }
