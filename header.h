@@ -154,6 +154,6 @@ void unlink_semaphores(){
 //    }
     sem_unlink(MUTEX_QUEUE);
     sem_unlink(SEMAPHORE_WFILE);
-    sem_unlink(SEMAPHORE_QUEUE);
+    sem_unlink(MUTEX_POST);
 }
 
