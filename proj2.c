@@ -168,16 +168,16 @@ int main(int argc, char* argv[]) {
             if(ipc->is_post_opened == true) {
                 int service = rand() % 3 + 1;
 
+                //semaphore for correct accessing queue data
+                sem_wait(sem_queue);
+                ipc->queue[service - 1]++;
+                sem_post(sem_queue);
+
                 //waiting for the semaphore to be free then write in a file
                 sem_wait(sem_file);
                 print_msg( file, "%u: Z %u: entering office for a service %d\n", ++ipc->line_n,
                           curr_process.id, service);
                 sem_post(sem_file);
-
-                //semaphore for correct accessing queue data
-                sem_wait(sem_queue);
-                ipc->queue[service - 1]++;
-                sem_post(sem_queue);
 
                 //waiting for free clerk to start
                 sem_wait(sem_clerk[service - 1]);
@@ -255,16 +255,18 @@ int main(int argc, char* argv[]) {
                         sem_post(sem_file);
                     }
                 }
+                if(!ipc->is_post_opened && no_queue(ipc)){
+                    break;
+                }
 
-                //ready for the next customer
-                sem_post(sem_clerk[service - 1]);
 
                 //semaphore for correct accessing queue data
                 sem_wait(sem_queue);
                 ipc->queue[service - 1]--;
                 sem_post(sem_queue);
 
-
+                //ready for the next customer
+                sem_post(sem_clerk[service - 1]);
                 //if the customer is ready - serve
                 sem_wait(sem_customer[service - 1]);
 
