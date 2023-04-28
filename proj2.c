@@ -222,13 +222,13 @@ int main(int argc, char* argv[]) {
             sem_wait(sem_file);
             print_msg(file, "%u: U %d: started\n", ++ipc->line_n, curr_process.id);
             sem_post(sem_file);
-            while(ipc->is_post_opened == true || !no_queue(ipc)) {
+            while(ipc->is_post_opened == true || !no_queue(sem_queue, ipc)) {
                 int service = rand() % 3 + 1;
                 //choose random service to serve if no found - take a break
                 while (ipc->queue[service - 1] == 0) {
                     service = rand() % 3 + 1;
                     // is closed and no customers - going home
-                    if(!ipc->is_post_opened && no_queue(ipc)){
+                    if(!ipc->is_post_opened && no_queue(sem_queue, ipc)){
                         //waiting for the semaphore to be free then write in a file
                         sem_wait(sem_file);
                         print_msg(file, "%u: U %d: going home\n", ++ipc->line_n, curr_process.id);
@@ -241,7 +241,7 @@ int main(int argc, char* argv[]) {
                         exit(EXIT_SUCCESS);
                     }
                     //taking break
-                    if (no_queue(ipc)) {
+                    if (no_queue(sem_queue,ipc)) {
                         //waiting for the semaphore to be free then write in a file
                         sem_wait(sem_file);
                         print_msg(file, "%u: U %d: taking break\n", ++ipc->line_n, curr_process.id);
@@ -255,7 +255,7 @@ int main(int argc, char* argv[]) {
                         sem_post(sem_file);
                     }
                 }
-                if(!ipc->is_post_opened && no_queue(ipc)){
+                if(!ipc->is_post_opened && no_queue(sem_queue, ipc)){
                     break;
                 }
 

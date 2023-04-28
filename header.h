@@ -79,12 +79,17 @@ process_t create_process(unsigned pid, unsigned id, char type){
 }
 
 //check if no customers in queue
-bool no_queue(ipc_t *ipc){
+bool no_queue(sem_t *sem, ipc_t *ipc){
+    //semaphore so that no clerks could get the same service
+    sem_wait(sem);
     if(ipc->queue[0] <= 0 && ipc->queue[1] <= 0 && ipc->queue[2] <= 0){
+        sem_post(sem);
         return true;
     }
-    else
+    else {
+        sem_post(sem);
         return false;
+    }
 }
 
 //print the message to the file
