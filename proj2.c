@@ -58,64 +58,68 @@ int main(int argc, char* argv[]) {
     ipc_t *ipc = ipc_init();
     if (ipc == NULL) {
         // IPC initialization failed, handling the error
-        perror("IPC initialization failed");
-        return 1;
+        fprintf(stderr, "IPC initialization failed");
+        exit(EXIT_FAILURE);
     }
     //open the file or create new if not existed
     FILE* file = fopen(FILENAME, "w");
     if (file == NULL) {
-        perror("fopen");
-        return 1;
+        fprintf(stderr, "Failed to open file");
+        exit(EXIT_FAILURE);
     }
 
     // unlink semaphores if existed before
     unlink_semaphores();
-
     // INITIALIZE SEMAPHORES
 
     //initialize 3 semaphores for customer queue (3 services 3 queue)
-    sem_t *sem_customer[3];
+//    sem_t *sem_customer[3];
+//    for (int i = 0; i < 3; i++) {
+//        char name[50];
+//        sprintf(name, "%s%d", SEMAPHORE_CUSTOMER, i);
+//        //unlink the semaphore if existed before
+//        sem_customer[i] = sem_open(name, O_CREAT, 0660, 0);
+//        if(sem_customer[i] == SEM_FAILED){
+//            fprintf(stderr, "Failed to initialize customer semaphores\n");
+//            exit(EXIT_FAILURE);
+//        }
+//    }
+
+    //initialize 3 semaphores for queue (3 services 3 queue)
+    sem_t *sem_queue[3];
     for (int i = 0; i < 3; i++) {
         char name[50];
-        sprintf(name, "%s%d", SEMAPHORE_CUSTOMER, i);
+        sprintf(name, "%s%d", SEMAPHORE_QUEUE, i);
         //unlink the semaphore if existed before
-        sem_unlink(name);
-        sem_customer[i] = sem_open(name, O_CREAT, 0660, 0);
-        if(sem_customer[i] == SEM_FAILED){
-            perror("sem_open/customer");
+        sem_queue[i] = sem_open(name, O_CREAT, 0660, 0);
+        if(sem_queue[i] == SEM_FAILED){
+            fprintf(stderr, "Failed to initialize queue semaphores\n");
             exit(EXIT_FAILURE);
         }
     }
 
-    //initialize 3 semaphores for clerk queue (3 services 3 queue)
-    sem_t *sem_clerk[3];
-    for (int i = 0; i < 3; i++) {
-        char name[50];
-        sprintf(name, "%s%d", SEMAPHORE_CLERC, i);
-        //unlink the semaphore if existed before
-        sem_unlink(name);
-        sem_clerk[i] = sem_open(name, O_CREAT, 0660, 0);
-        if(sem_clerk[i] == SEM_FAILED){
-            perror("sem_open/clerk");
-            exit(EXIT_FAILURE);
-        }
+    //initialize semaphore for post
+    sem_t *sem_post = sem_open(SEMAPHORE_POST, O_CREAT, 0660, 1);
+    if(sem_post == SEM_FAILED){
+        fprintf(stderr, "Failed to initialize post semaphore\n");
+        exit(EXIT_FAILURE);
     }
 
     //initialize semaphore(mutex) for writing in file
     sem_t *sem_file = sem_open(SEMAPHORE_WFILE, O_CREAT, 0660, 1);
     if(sem_file == SEM_FAILED){
-        perror("sem_open/wfile");
+        fprintf(stderr, "Failed to initialize file semaphore\n");
         exit(EXIT_FAILURE);
     }
-    //initialize semaphore(mutex) for data about queue
-    sem_t *sem_queue = sem_open(SEMAPHORE_QUEUE, O_CREAT, 0660, 1);
-    if(sem_file == SEM_FAILED){
-        perror("sem_open/queue");
+    //initialize mutex for sync editing data about queue
+    sem_t *mutex_queue = sem_open(MUTEX_QUEUE, O_CREAT, 0660, 1);
+    if(mutex_queue == SEM_FAILED){
+        fprintf(stderr, "Failed to initialize queue mutex\n");
         exit(EXIT_FAILURE);
     }
 
     // array of pointers to all semaphores for easier cleaning up
-    sem_t *sem_array[SEM_COUNT] = { sem_file, sem_queue, sem_customer[0], sem_customer[1], sem_customer[2], sem_clerk[0], sem_clerk[1], sem_clerk[2]};
+    sem_t *sem_array[SEM_COUNT] = { sem_file, mutex_queue, sem_queue[0], sem_queue[1], sem_queue[2], sem_post);
 
     //Creates NU processes out of main process
     if (main_process.pid == getpid())
@@ -150,37 +154,39 @@ int main(int argc, char* argv[]) {
         }
         //waiting for the semaphore to be free then write in a file
         sem_wait(sem_file);
+        sem_wait(sem_post);
+        ipc->is_post_opened = false;
+        sem_post(sem_post);
         print_msg(file, "%u: closing\n", ++ipc->line_n);
         sem_post(sem_file);
-        ipc->is_post_opened = false;
     }
     else{
         if(curr_process.type == 'Z') {
             //waiting for the semaphore to be free then write in a file
             sem_wait(sem_file);
-            print_msg( file, "%u: Z %d: started\n", ++ipc->line_n, curr_process.id);
+            print_msg(file, "%u: Z %d: started\n", ++ipc->line_n, curr_process.id);
             sem_post(sem_file);
             srand(getpid()); // initialize random number generator
-            if(TZ != 0){
+            if (TZ != 0) {
                 int sleep_time = (rand() % TZ) * 1000; // random sleep in ms
                 usleep(sleep_time);
             }
-            if(ipc->is_post_opened == true) {
+            if (!is_post_closed(sem_post, ipc)) {
                 int service = rand() % 3 + 1;
-
-                //semaphore for correct accessing queue data
-                sem_wait(sem_queue);
-                ipc->queue[service - 1]++;
-                sem_post(sem_queue);
-
                 //waiting for the semaphore to be free then write in a file
                 sem_wait(sem_file);
-                print_msg( file, "%u: Z %u: entering office for a service %d\n", ++ipc->line_n,
+                print_msg(file, "%u: Z %u: entering office for a service %d\n", ++ipc->line_n,
                           curr_process.id, service);
                 sem_post(sem_file);
 
+
+                //semaphore for correct accessing queue data
+                sem_wait(mutex_queue);
+                ipc->queue[service - 1]++;
+                sem_post(mutex_queue);
+
                 //waiting for free clerk to start
-                sem_wait(sem_clerk[service - 1]);
+                sem_wait(sem_queue[service - 1]);
 
                 //waiting for the semaphore to be free then write in a file
                 sem_wait(sem_file);
@@ -188,47 +194,34 @@ int main(int argc, char* argv[]) {
                 sem_post(sem_file);
 
                 //semaphore for notifying clerk to start serving the customer with specific service
-                sem_post(sem_customer[service - 1]);
+                //sem_post(sem_customer[service - 1]);
 
                 usleep((rand() % 10) * 1000);
-
-                //waiting for the semaphore to be free then write in a file
-                sem_wait(sem_file);
-                print_msg(file, "%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
-                sem_post(sem_file);
-
-                // Destroy the semaphores
-                destroy_semaphores(sem_array);
-                //close file
-                fclose(file);
-                //exit with sucess
-                exit(EXIT_SUCCESS);
-
             }
-            else {
-                //waiting for the semaphore to be free then write in a file
-                sem_wait(sem_file);
-                print_msg(file,"%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
-                sem_post(sem_file);
-                // Destroy the semaphores
-                destroy_semaphores(sem_array);
-                //close file
-                fclose(file);
-                //exit with sucess
-                exit(EXIT_SUCCESS);
-            }
+            //waiting for the semaphore to be free then write in a file
+            sem_wait(sem_file);
+            print_msg(file, "%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
+            sem_post(sem_file);
+
+            // Destroy the semaphores
+            destroy_semaphores(sem_array);
+            //close file
+            fclose(file);
+            //exit with sucess
+            exit(EXIT_SUCCESS);
+
         }else if (curr_process.type == 'U'){
             //waiting for the semaphore to be free then write in a file
             sem_wait(sem_file);
             print_msg(file, "%u: U %d: started\n", ++ipc->line_n, curr_process.id);
             sem_post(sem_file);
-            while(ipc->is_post_opened == true || !no_queue(sem_queue, ipc)) {
+            while(!is_post_closed(sem_post, ipc) || !no_queue(sem_queue, ipc)) {
                 int service = rand() % 3 + 1;
                 //choose random service to serve if no found - take a break
-                while (ipc->queue[service - 1] == 0) {
+                while (is_empty_queue(sem_queue, ipc, service)) {
                     service = rand() % 3 + 1;
                     // is closed and no customers - going home
-                    if(!ipc->is_post_opened && no_queue(sem_queue, ipc)){
+                    if(is_post_closed(sem_post, ipc) && no_queue(sem_queue, ipc)){
                         //waiting for the semaphore to be free then write in a file
                         sem_wait(sem_file);
                         print_msg(file, "%u: U %d: going home\n", ++ipc->line_n, curr_process.id);
@@ -241,7 +234,7 @@ int main(int argc, char* argv[]) {
                         exit(EXIT_SUCCESS);
                     }
                     //taking break
-                    if (no_queue(sem_queue,ipc)) {
+                    if (no_queue(sem_queue,ipc) && !is_post_closed(sem_post, ipc)) {
                         //waiting for the semaphore to be free then write in a file
                         sem_wait(sem_file);
                         print_msg(file, "%u: U %d: taking break\n", ++ipc->line_n, curr_process.id);
@@ -255,20 +248,20 @@ int main(int argc, char* argv[]) {
                         sem_post(sem_file);
                     }
                 }
-                if(!ipc->is_post_opened && no_queue(sem_queue, ipc)){
+                if(!is_post_closed(sem_post, ipc) && no_queue(sem_queue, ipc)){
                     break;
                 }
 
-
                 //semaphore for correct accessing queue data
-                sem_wait(sem_queue);
+                sem_wait(mutex_queue);
                 ipc->queue[service - 1]--;
-                sem_post(sem_queue);
+                sem_post(mutex_queue);
 
                 //ready for the next customer
-                sem_post(sem_clerk[service - 1]);
+                sem_post(sem_queue[service - 1]);
+
                 //if the customer is ready - serve
-                sem_wait(sem_customer[service - 1]);
+                //sem_wait(sem_customer[service - 1]);
 
                 //waiting for the semaphore to be free then write in a file
                 sem_wait(sem_file);

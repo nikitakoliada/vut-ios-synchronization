@@ -13,12 +13,12 @@
 // Author - Nikita Koliada
 // LOGIN - xkolia00
 
-#define SEM_COUNT 8
+#define SEM_COUNT 6
 
-#define SEMAPHORE_CUSTOMER "semaphore_customer"
-#define SEMAPHORE_CLERC "semaphore_clerc"
-#define SEMAPHORE_WFILE "semaphore_wfile"
 #define SEMAPHORE_QUEUE "semaphore_queue"
+#define SEMAPHORE_POST "semaphore_post"
+#define SEMAPHORE_WFILE "semaphore_wfile"
+#define MUTEX_QUEUE "mutex_queue"
 
 
 #define FK "proj2.c"
@@ -34,7 +34,7 @@ typedef struct
     int queue[3];
     int customer_n;
     int clerks_n;
-    bool is_post_opened;
+    bool status_post;
     unsigned shmid;
 } ipc_t;
 
@@ -61,7 +61,7 @@ ipc_t* ipc_init(){
     ipc->queue[0] = 0;
     ipc->queue[2] = 0;
     ipc->queue[1] = 0;
-    ipc->is_post_opened = true;
+    ipc->status_post = true;
     return ipc;
 }
 
@@ -78,16 +78,38 @@ process_t create_process(unsigned pid, unsigned id, char type){
     return ((process_t){pid, id, type});
 }
 
-//check if no customers in queue
-bool no_queue(sem_t *sem, ipc_t *ipc){
-    //semaphore so that no clerks could get the same service
+//check if post is closed with the usage of the semaphore
+bool is_post_closed(sem_t *sem, ipc_t *ipc){
     sem_wait(sem);
-    if(ipc->queue[0] <= 0 && ipc->queue[1] <= 0 && ipc->queue[2] <= 0){
+    if(ipc->status_post){
+        sem_post(sem);
+        return true;
+    else{
+        sem_post(sem);
+        return false;
+    }
+}
+
+//check if the queue is empty in specific service
+bool is_empty_queue(sem_t *sem, ipc_t *ipc, int service){
+    //semaphore - no clerks could get the same service
+    sem_wait(sem);
+    if(ipc_t->>queue[service - 1] == 0){
         sem_post(sem);
         return true;
     }
-    else {
+    else{
         sem_post(sem);
+        return false;
+    }
+}
+
+//check if no customers in queue
+bool no_queue(sem_t *sem, ipc_t *ipc){
+    if(is_empty_queue(sem, ipc, 1) && is_empty_queue(sem, ipc, 2) && is_empty_queue(sem, ipc, 3)){
+        return true;
+    }
+    else {
         return false;
     }
 }
@@ -122,14 +144,15 @@ void destroy_semaphores(sem_t **sem_array) {
 void unlink_semaphores(){
     for (int i = 0; i < 3; i++) {
         char name[50];
-        sprintf(name, "%s%d", SEMAPHORE_CLERC, i);
+        sprintf(name, "%s%d", SEMAPHORE_QUEUE, i);
         sem_unlink(name);
     }
-    for (int i = 0; i < 3; i++) {
-        char name[50];
-        sprintf(name, "%s%d", SEMAPHORE_CUSTOMER, i);
-        sem_unlink(name);
-    }
+//    for (int i = 0; i < 3; i++) {
+//        char name[50];
+//        sprintf(name, "%s%d", SEMAPHORE_CUSTOMER, i);
+//        sem_unlink(name);
+//    }
+    sem_unlink(MUTEX_QUEUE);
     sem_unlink(SEMAPHORE_WFILE);
     sem_unlink(SEMAPHORE_QUEUE);
 }
