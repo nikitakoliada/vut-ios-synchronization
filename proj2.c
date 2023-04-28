@@ -56,7 +56,11 @@ int main(int argc, char* argv[]) {
 
     //creating shared memory pointer
     ipc_t *ipc = ipc_init();
-
+    if (ipc == NULL) {
+        // IPC initialization failed, handling the error
+        perror("IPC initialization failed");
+        return 1;
+    }
     //open the file or create new if not existed
     FILE* file = fopen(FILENAME, "w");
     if (file == NULL) {
@@ -138,19 +142,24 @@ int main(int argc, char* argv[]) {
     srand(getpid()); 
 
     if(main_process.pid == getpid()) {
-            // main process
-            // defines the work time
-            if(F != 0){
-                int sleep_time = ((rand() %(F/2 + 1)) + F/2) * 1000; // random time in ms
-                usleep(sleep_time);
-            }
-            print_msg(file, sem_file, "%u: closing\n", ++ipc->line_n);
-            ipc->is_post_opened = false;
-
+        // main process
+        // defines the work time
+        if (F != 0) {
+            int sleep_time = ((rand() % (F / 2 + 1)) + F / 2) * 1000; // random time in ms
+            usleep(sleep_time);
         }
+        //waiting for the semaphore to be free then write in a file
+        sem_wait(sem_file);
+        print_msg(file, "%u: closing\n", ++ipc->line_n);
+        sem_post(sem_file);
+        ipc->is_post_opened = false;
+    }
     else{
         if(curr_process.type == 'Z') {
-            print_msg( file,sem_file, "%u: Z %d: started\n", ++ipc->line_n, curr_process.id);
+            //waiting for the semaphore to be free then write in a file
+            sem_wait(sem_file);
+            print_msg( file, "%u: Z %d: started\n", ++ipc->line_n, curr_process.id);
+            sem_post(sem_file);
             srand(getpid()); // initialize random number generator
             if(TZ != 0){
                 int sleep_time = (rand() % TZ) * 1000; // random sleep in ms
@@ -158,8 +167,12 @@ int main(int argc, char* argv[]) {
             }
             if(ipc->is_post_opened == true) {
                 int service = rand() % 3 + 1;
-                print_msg( file,sem_file, "%u: Z %u: entering office for a service %d\n", ++ipc->line_n,
+
+                //waiting for the semaphore to be free then write in a file
+                sem_wait(sem_file);
+                print_msg( file, "%u: Z %u: entering office for a service %d\n", ++ipc->line_n,
                           curr_process.id, service);
+                sem_post(sem_file);
 
                 //semaphore for correct accessing queue data
                 sem_wait(sem_queue);
@@ -168,13 +181,22 @@ int main(int argc, char* argv[]) {
 
                 //waiting for free clerk to start
                 sem_wait(sem_clerk[service - 1]);
-                print_msg(file,sem_file, "%u: Z %d: called by office worker\n", ++ipc->line_n, curr_process.id);
+
+                //waiting for the semaphore to be free then write in a file
+                sem_wait(sem_file);
+                print_msg(file, "%u: Z %d: called by office worker\n", ++ipc->line_n, curr_process.id);
+                sem_post(sem_file);
 
                 //semaphore for notifying clerk to start serving the customer with specific service
                 sem_post(sem_customer[service - 1]);
 
                 usleep((rand() % 10) * 1000);
-                print_msg(file,sem_file, "%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
+
+                //waiting for the semaphore to be free then write in a file
+                sem_wait(sem_file);
+                print_msg(file, "%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
+                sem_post(sem_file);
+
                 // Destroy the semaphores
                 destroy_semaphores(sem_array);
                 //close file
@@ -184,7 +206,10 @@ int main(int argc, char* argv[]) {
 
             }
             else {
-                print_msg(file,sem_file,"%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
+                //waiting for the semaphore to be free then write in a file
+                sem_wait(sem_file);
+                print_msg(file,"%u: Z %d: going home\n", ++ipc->line_n, curr_process.id);
+                sem_post(sem_file);
                 // Destroy the semaphores
                 destroy_semaphores(sem_array);
                 //close file
@@ -193,15 +218,21 @@ int main(int argc, char* argv[]) {
                 exit(EXIT_SUCCESS);
             }
         }else if (curr_process.type == 'U'){
-            print_msg(file,sem_file, "%u: U %d: started\n", ++ipc->line_n, curr_process.id);
+            //waiting for the semaphore to be free then write in a file
+            sem_wait(sem_file);
+            print_msg(file, "%u: U %d: started\n", ++ipc->line_n, curr_process.id);
+            sem_post(sem_file);
             while(ipc->is_post_opened == true || !no_queue(ipc)) {
                 int service = rand() % 3 + 1;
                 //choose random service to serve if no found - take a break
                 while (ipc->queue[service - 1] == 0) {
                     service = rand() % 3 + 1;
+                    // is closed and no customers - going home
                     if(!ipc->is_post_opened && no_queue(ipc)){
-                        // is closed and no customers - going home
-                        print_msg(file,sem_file, "%u: U %d: going home\n", ++ipc->line_n, curr_process.id);
+                        //waiting for the semaphore to be free then write in a file
+                        sem_wait(sem_file);
+                        print_msg(file, "%u: U %d: going home\n", ++ipc->line_n, curr_process.id);
+                        sem_post(sem_file);
                         // Destroy the semaphores
                         destroy_semaphores(sem_array);
                         //close file
@@ -209,13 +240,19 @@ int main(int argc, char* argv[]) {
                         //exit with sucess
                         exit(EXIT_SUCCESS);
                     }
+                    //taking break
                     if (no_queue(ipc)) {
-                        //taking break
-                        print_msg(file,sem_file, "%u: U %d: taking break\n", ++ipc->line_n, curr_process.id);
+                        //waiting for the semaphore to be free then write in a file
+                        sem_wait(sem_file);
+                        print_msg(file, "%u: U %d: taking break\n", ++ipc->line_n, curr_process.id);
+                        sem_post(sem_file);
                         if(TU != 0){
                             usleep((rand() % TU) * 1000);
                         }
-                        print_msg(file,sem_file, "%u: U %d: break finished\n", ++ipc->line_n, curr_process.id);
+                        //waiting for the semaphore to be free then write in a file
+                        sem_wait(sem_file);
+                        print_msg(file, "%u: U %d: break finished\n", ++ipc->line_n, curr_process.id);
+                        sem_post(sem_file);
                     }
                 }
 
@@ -231,15 +268,25 @@ int main(int argc, char* argv[]) {
                 //if the customer is ready - serve
                 sem_wait(sem_customer[service - 1]);
 
-                print_msg(file,sem_file, "%u: U %d: serving a service of type %d\n", ++ipc->line_n, curr_process.id,
+                //waiting for the semaphore to be free then write in a file
+                sem_wait(sem_file);
+                print_msg(file, "%u: U %d: serving a service of type %d\n", ++ipc->line_n, curr_process.id,
                           service);
+                sem_post(sem_file);
                 usleep((rand() % 10) * 1000);
-                print_msg(file,sem_file, "%u: U %d: service finished\n", ++ipc->line_n, curr_process.id);
+                //waiting for the semaphore to be free then write in a file
+                sem_wait(sem_file);
+                print_msg(file, "%u: U %d: service finished\n", ++ipc->line_n, curr_process.id);
+                sem_post(sem_file);
 
             }
             //going home
-            print_msg(file, sem_file, "%u: U %d: going home\n", ++ipc->line_n, curr_process.id);
-             // Destroy the semaphores
+
+            //waiting for the semaphore to be free then write in a file
+            sem_wait(sem_file);
+            print_msg(file, "%u: U %d: going home\n", ++ipc->line_n, curr_process.id);
+            sem_post(sem_file);
+            // Destroy the semaphores
             destroy_semaphores(sem_array);
             //close file
             fclose(file);

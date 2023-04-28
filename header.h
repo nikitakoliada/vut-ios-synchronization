@@ -80,7 +80,7 @@ process_t create_process(unsigned pid, unsigned id, char type){
 
 //check if no customers in queue
 bool no_queue(ipc_t *ipc){
-    if(ipc->queue[0] == 0 && ipc->queue[1] == 0 && ipc->queue[2] == 0){
+    if(ipc->queue[0] <= 0 && ipc->queue[1] <= 0 && ipc->queue[2] <= 0){
         return true;
     }
     else
@@ -88,8 +88,7 @@ bool no_queue(ipc_t *ipc){
 }
 
 //print the message to the file
-void print_msg(FILE *file, sem_t *sem_file, const char *format, ...) {
-    sem_wait(sem_file);
+void print_msg(FILE *file, const char *format, ...) {
 
     va_list args;
     va_start(args, format);
@@ -98,7 +97,6 @@ void print_msg(FILE *file, sem_t *sem_file, const char *format, ...) {
     fflush(file);
 
     va_end(args);
-    sem_post(sem_file);
 
 }
 
