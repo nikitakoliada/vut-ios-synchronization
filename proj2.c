@@ -137,7 +137,7 @@ int main(int argc, char* argv[]) {
 
         // defines the work time
         if (F != 0) {
-            int sleep_time = ((rand() % (F / 2 + 1)) + F / 2) * 1000; // random time in ms
+            int sleep_time = ((rand() % (F / 2 + 1)) + (F / 2)) * 1000; // random time in ms
             usleep(sleep_time);
         }
 
@@ -160,7 +160,7 @@ int main(int argc, char* argv[]) {
             sem_post(sem_file);
             srand(getpid()); // initialize random number generator
             if (TZ != 0) {
-                int sleep_time = (rand() % TZ) * 1000; // random sleep in ms
+                int sleep_time = (rand() % (TZ + 1)) * 1000; // random sleep in ms
                 usleep(sleep_time);
             }
             //waiting a semaphore for post( no entering office after closing)
@@ -188,8 +188,8 @@ int main(int argc, char* argv[]) {
                 print_msg(file, "%u: Z %d: called by office worker\n", ++ipc->line_n, curr_process.id);
                 sem_post(sem_file);
 
-                //wait random amount of time
-                usleep((rand() % 10) * 1000);
+                //wait random amount of time 0-10
+                usleep((rand() % 11) * 1000);
             } else{
                 //if the post is closed - post the mutex and go home
                 sem_post(mutex_post);
@@ -246,7 +246,7 @@ int main(int argc, char* argv[]) {
                         sem_post(sem_file);
                         sem_post(mutex_post);
                         if(TU != 0){
-                            usleep((rand() % TU) * 1000);
+                            usleep((rand() % (TU + 1)) * 1000);
                         }
                         //waiting for the semaphore to be free then write in a file
                         sem_wait(sem_file);
@@ -280,7 +280,7 @@ int main(int argc, char* argv[]) {
                           service);
                 sem_post(sem_file);
 
-                usleep((rand() % 10) * 1000);
+                usleep((rand() % 11) * 1000);
                 //waiting for the semaphore to be free then write in a file
                 sem_wait(sem_file);
                 print_msg(file, "%u: U %d: service finished\n", ++ipc->line_n, curr_process.id);
