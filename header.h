@@ -73,43 +73,21 @@ void ipc_destroy(ipc_t *ipc){
 }
 
 //creating a process where type has 3 vars - 'm', 'u', 'z'
-//m - main process, u - clerc, z - customer
+//m - main process, u - clerk, z - customer
 process_t create_process(unsigned pid, unsigned id, char type){
     return ((process_t){pid, id, type});
 }
 
-//check if post is closed with the usage of the semaphore
-bool is_post_closed(sem_t *sem, ipc_t *ipc){
-    sem_wait(sem);
-    if(ipc->status_post) {
-        sem_post(sem);
-        return true;
-    }else{
-        sem_post(sem);
-        return false;
-    }
-}
-
-//check if the queue is empty in specific service
-bool is_empty_queue(sem_t *sem, ipc_t *ipc, int service){
-    //semaphore - no clerks could get the same service
-    sem_wait(sem);
-    if(ipc->queue[service - 1] == 0){
-        sem_post(sem);
-        return true;
-    }
-    else{
-        sem_post(sem);
-        return false;
-    }
-}
-
 //check if no customers in queue
 bool no_queue(sem_t *sem, ipc_t *ipc){
-    if(is_empty_queue(sem, ipc, 1) && is_empty_queue(sem, ipc, 2) && is_empty_queue(sem, ipc, 3)){
+    //waiting for the semaphore( no simultaneous access possible)
+    sem_wait(sem);
+    if(ipc->queue[0] == 0 && ipc->queue[1] == 0 && ipc->queue[2] == 0){
+        sem_post(sem);
         return true;
     }
     else {
+        sem_post(sem);
         return false;
     }
 }
@@ -147,11 +125,6 @@ void unlink_semaphores(){
         sprintf(name, "%s%d", SEMAPHORE_QUEUE, i);
         sem_unlink(name);
     }
-//    for (int i = 0; i < 3; i++) {
-//        char name[50];
-//        sprintf(name, "%s%d", SEMAPHORE_CUSTOMER, i);
-//        sem_unlink(name);
-//    }
     sem_unlink(MUTEX_QUEUE);
     sem_unlink(SEMAPHORE_WFILE);
     sem_unlink(MUTEX_POST);

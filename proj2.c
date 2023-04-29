@@ -72,19 +72,6 @@ int main(int argc, char* argv[]) {
     unlink_semaphores();
     // INITIALIZE SEMAPHORES
 
-    //initialize 3 semaphores for customer queue (3 services 3 queue)
-//    sem_t *sem_customer[3];
-//    for (int i = 0; i < 3; i++) {
-//        char name[50];
-//        sprintf(name, "%s%d", SEMAPHORE_CUSTOMER, i);
-//        //unlink the semaphore if existed before
-//        sem_customer[i] = sem_open(name, O_CREAT, 0660, 0);
-//        if(sem_customer[i] == SEM_FAILED){
-//            fprintf(stderr, "Failed to initialize customer semaphores\n");
-//            exit(EXIT_FAILURE);
-//        }
-//    }
-
     //initialize 3 semaphores for queue (3 services 3 queue)
     sem_t *sem_queue[3];
     for (int i = 0; i < 3; i++) {
@@ -147,18 +134,23 @@ int main(int argc, char* argv[]) {
 
     if(main_process.pid == getpid()) {
         // main process
+
         // defines the work time
         if (F != 0) {
             int sleep_time = ((rand() % (F / 2 + 1)) + F / 2) * 1000; // random time in ms
             usleep(sleep_time);
         }
-        //waiting for the semaphore to be free then write in a file
-        sem_wait(sem_file);
+
+        //waiting a semaphore for post
         sem_wait(mutex_post);
         ipc->status_post = false;
-        sem_post(mutex_post);
+        //waiting for the semaphore to be free then write in a file
+        sem_wait(sem_file);
         print_msg(file, "%u: closing\n", ++ipc->line_n);
         sem_post(sem_file);
+        //posting the post semaphore for other usages
+        sem_post(mutex_post);
+
     }
     else{
         if(curr_process.type == 'Z') {
@@ -171,15 +163,18 @@ int main(int argc, char* argv[]) {
                 int sleep_time = (rand() % TZ) * 1000; // random sleep in ms
                 usleep(sleep_time);
             }
-            if (!is_post_closed(mutex_post, ipc)) {
+            //waiting a semaphore for post( no entering office after closing)
+            sem_wait(mutex_post);
+            if (ipc->status_post == true) {
+
                 int service = rand() % 3 + 1;
+
                 //waiting for the semaphore to be free then write in a file
                 sem_wait(sem_file);
                 print_msg(file, "%u: Z %u: entering office for a service %d\n", ++ipc->line_n,
                           curr_process.id, service);
                 sem_post(sem_file);
-
-
+                sem_post(mutex_post);
                 //semaphore for correct accessing queue data
                 sem_wait(mutex_queue);
                 ipc->queue[service - 1]++;
@@ -193,10 +188,11 @@ int main(int argc, char* argv[]) {
                 print_msg(file, "%u: Z %d: called by office worker\n", ++ipc->line_n, curr_process.id);
                 sem_post(sem_file);
 
-                //semaphore for notifying clerk to start serving the customer with specific service
-                //sem_post(sem_customer[service - 1]);
-
+                //wait random amount of time
                 usleep((rand() % 10) * 1000);
+            } else{
+                //if the post is closed - post the mutex and go home
+                sem_post(mutex_post);
             }
             //waiting for the semaphore to be free then write in a file
             sem_wait(sem_file);
@@ -207,7 +203,7 @@ int main(int argc, char* argv[]) {
             destroy_semaphores(sem_array);
             //close file
             fclose(file);
-            //exit with sucess
+            //exit with success
             exit(EXIT_SUCCESS);
 
         }else if (curr_process.type == 'U'){
@@ -215,30 +211,40 @@ int main(int argc, char* argv[]) {
             sem_wait(sem_file);
             print_msg(file, "%u: U %d: started\n", ++ipc->line_n, curr_process.id);
             sem_post(sem_file);
-            while(!is_post_closed(mutex_post, ipc) || !no_queue(mutex_queue, ipc)) {
+            while(!no_queue(mutex_queue, ipc) || ipc->status_post == true) {
                 int service = rand() % 3 + 1;
                 //choose random service to serve if no found - take a break
-                while (is_empty_queue(mutex_queue, ipc, service)) {
+                while (ipc->queue[service - 1] == 0) {
                     service = rand() % 3 + 1;
                     // is closed and no customers - going home
-                    if(is_post_closed(mutex_post, ipc) && no_queue(mutex_queue, ipc)){
+                    //waiting a semaphore for post
+                    sem_wait(mutex_post);
+                    if(no_queue(mutex_queue, ipc) && ipc->status_post == false){
+                        sem_post(mutex_post);
                         //waiting for the semaphore to be free then write in a file
                         sem_wait(sem_file);
                         print_msg(file, "%u: U %d: going home\n", ++ipc->line_n, curr_process.id);
                         sem_post(sem_file);
+
                         // Destroy the semaphores
                         destroy_semaphores(sem_array);
                         //close file
                         fclose(file);
-                        //exit with sucess
+                        //exit with success
                         exit(EXIT_SUCCESS);
                     }
+                    else{
+                        sem_post(mutex_post);
+                    }
                     //taking break
-                    if (no_queue(mutex_queue,ipc) && !is_post_closed(mutex_post, ipc)) {
+                    //waiting a semaphore for post(no taking break after closing)
+                    sem_wait(mutex_post);
+                    if (no_queue(mutex_queue,ipc) && ipc->status_post == true) {
                         //waiting for the semaphore to be free then write in a file
                         sem_wait(sem_file);
                         print_msg(file, "%u: U %d: taking break\n", ++ipc->line_n, curr_process.id);
                         sem_post(sem_file);
+                        sem_post(mutex_post);
                         if(TU != 0){
                             usleep((rand() % TU) * 1000);
                         }
@@ -247,27 +253,33 @@ int main(int argc, char* argv[]) {
                         print_msg(file, "%u: U %d: break finished\n", ++ipc->line_n, curr_process.id);
                         sem_post(sem_file);
                     }
-                }
-                if(!is_post_closed(mutex_post, ipc) && no_queue(mutex_queue, ipc)){
-                    break;
+                    else{
+                        sem_post(mutex_post);
+                    }
                 }
 
-                //semaphore for correct accessing queue data
+                // check if the service was already taken by someone
                 sem_wait(mutex_queue);
-                ipc->queue[service - 1]--;
-                sem_post(mutex_queue);
+                if(ipc->queue[service - 1] != 0){
+                    ipc->queue[service - 1]--;
+                    sem_post(mutex_queue);
+
+                }
+                else{
+                    // the queue was already taken by another customer
+                    sem_post(mutex_queue);
+                    continue;
+                }
 
                 //ready for the next customer
                 sem_post(sem_queue[service - 1]);
-
-                //if the customer is ready - serve
-                //sem_wait(sem_customer[service - 1]);
 
                 //waiting for the semaphore to be free then write in a file
                 sem_wait(sem_file);
                 print_msg(file, "%u: U %d: serving a service of type %d\n", ++ipc->line_n, curr_process.id,
                           service);
                 sem_post(sem_file);
+
                 usleep((rand() % 10) * 1000);
                 //waiting for the semaphore to be free then write in a file
                 sem_wait(sem_file);
@@ -285,7 +297,7 @@ int main(int argc, char* argv[]) {
             destroy_semaphores(sem_array);
             //close file
             fclose(file);
-            //exit with sucess
+            //exit with success
             exit(EXIT_SUCCESS);
         }
 
